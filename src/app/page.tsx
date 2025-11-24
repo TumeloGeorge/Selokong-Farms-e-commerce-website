@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react';
+import { isUserLoggedIn } from './utils/auth';
 import Image from 'next/image';
 import { Menu, X, ShoppingCart, Leaf, Truck, Droplets, Users, Phone, Mail, MapPin, ArrowRight, Star } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import AccountDropdown from './AccountDropdown';
 
 export default function GreenSproutLanding() {
   const router = useRouter();
@@ -71,7 +73,14 @@ export default function GreenSproutLanding() {
     setCartCount(cartCount + 1);
     alert(`${productName} added to cart!\n\n(Shopping cart feature coming in next phase)`);
   };
-
+  const handleViewProducts = () => {
+    if (isUserLoggedIn()) {
+      router.push('/products'); // if the user is logged in
+    }
+    else {
+      router.push('/login'); // if not logged in, redirect to login
+    }
+  };
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId);
     if (element) {
@@ -110,22 +119,52 @@ export default function GreenSproutLanding() {
             </div>
 
             {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center gap-8">
-              <button onClick={() => scrollToSection('hero')} className="text-gray-700 hover:text-green-700 font-medium transition-colors">Home</button>
-              <button onClick={() => scrollToSection('about')} className="text-gray-700 hover:text-green-700 font-medium transition-colors">About</button>
-              <button onClick={() => scrollToSection('products')} className="text-gray-700 hover:text-green-700 font-medium transition-colors">Products</button>
-              <button onClick={() => scrollToSection('services')} className="text-gray-700 hover:text-green-700 font-medium transition-colors">Services</button>
-              <button onClick={() => scrollToSection('contact')} className="text-gray-700 hover:text-green-700 font-medium transition-colors">Contact</button>
-              
-              <button className="relative p-2 hover:bg-green-50 rounded-full transition-colors">
-                <ShoppingCart className="w-6 h-6 text-gray-700" />
-                {cartCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
-                    {cartCount}
-                  </span>
-                )}
-              </button>
-            </nav>
+<nav className="hidden md:flex items-center gap-8 relative">
+  <button
+    onClick={() => scrollToSection("hero")}
+    className="text-gray-700 hover:text-green-700 font-medium transition-colors"
+  >
+    Home
+  </button>
+  <button
+    onClick={() => scrollToSection("about")}
+    className="text-gray-700 hover:text-green-700 font-medium transition-colors"
+  >
+    About
+  </button>
+  <button
+    onClick={() => scrollToSection("products")}
+    className="text-gray-700 hover:text-green-700 font-medium transition-colors"
+  >
+    Products
+  </button>
+  <button
+    onClick={() => scrollToSection("services")}
+    className="text-gray-700 hover:text-green-700 font-medium transition-colors"
+  >
+    Services
+  </button>
+  <button
+    onClick={() => scrollToSection("contact")}
+    className="text-gray-700 hover:text-green-700 font-medium transition-colors"
+  >
+    Contact
+  </button>
+
+  {/* Account Dropdown */}
+  <AccountDropdown />
+
+  {/* Cart Button */}
+  <button className="relative p-2 hover:bg-green-50 rounded-full transition-colors">
+    <ShoppingCart className="w-6 h-6 text-gray-700" />
+    {cartCount > 0 && (
+      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+        {cartCount}
+      </span>
+    )}
+  </button>
+</nav>
+
 
             {/* Mobile Menu Button */}
             <button 
@@ -331,7 +370,7 @@ export default function GreenSproutLanding() {
 
           <div className="text-center mt-12">
             <button className="bg-gradient-to-r from-yellow-400 to-yellow-500 text-gray-900 px-10 py-4 rounded-xl font-bold text-lg hover:from-yellow-500 hover:to-yellow-600 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 inline-flex items-center gap-2"
-              onClick={() => router.push('/products')}
+              onClick={handleViewProducts}
             >
               View All Products
               <ArrowRight className="w-5 h-5" />

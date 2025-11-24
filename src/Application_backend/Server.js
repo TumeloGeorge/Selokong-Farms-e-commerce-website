@@ -8,7 +8,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const { Pool } = require('./DB.js');
 const cors = require('cors');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 require('dotenv').config({path: '.env'});
 

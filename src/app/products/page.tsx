@@ -180,7 +180,7 @@ function ProductsPage({ onProductClick }: ProductsPageProps) {
             >
               <ShoppingCart className="w-6 h-6" />
               <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-bold">
-                0
+                1
               </span>
             </button>
           </div>
