@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import Sidebar from '@/components/admin/Sidebar';
+import Sidebar from '@/components/admin/sidebar';
 import DashboardView from '@/components/admin/DashboardView';
 import AnalyticsView from '@/components/admin/AnalyticsView';
 import InventoryView from '@/components/admin/InventoryView';

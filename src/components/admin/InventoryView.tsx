@@ -16,7 +16,7 @@ export default function InventoryView() {
         + Add Product
       </button>
 
-      <table className="w-full bg-white shadow rounded-lg">
+      <table className="w-full bg-white text-black shadow rounded-lg">
         <thead>
           <tr className="text-left bg-gray-50 border-b">
             <th className="p-3">Product</th>
@@ -28,7 +28,7 @@ export default function InventoryView() {
         </thead>
         <tbody>
           {products.map((p, i) => (
-            <tr key={i} className="border-b hover:bg-gray-50">
+            <tr key={i} className="border-b text-black hover:bg-gray-50">
               <td className="p-3">{p.name}</td>
               <td className={`p-3 ${p.stock === 0 ? 'text-red-600 font-semibold' : 'text-gray-700'}`}>{p.stock}</td>
               <td className="p-3 text-gray-700">{p.sold}</td>

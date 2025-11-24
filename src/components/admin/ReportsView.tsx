@@ -18,7 +18,7 @@ export default function ReportsView() {
         <div className="mb-4">
           <label className="block text-gray-700">Report Type</label>
           <select
-            className="border rounded w-full p-2"
+            className="border text-black rounded w-full p-2"
             value={type}
             onChange={(e) => setType(e.target.value)}
           >
