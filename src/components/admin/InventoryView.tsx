@@ -2,11 +2,53 @@
 import React from 'react';
 
 export default function InventoryView() {
+  interface Product {
+  product_id: string;
+  category_id: string;
+  name: string;
+  slug: string;
+  short_description: string;
+  full_description: string;
+  price: number;
+  compare_at_price: number | null;
+  unit: string;
+  sku: string;
+  stock_quantity: number;
+  low_stock_threshold: number;
+  is_active: boolean;
+  is_featured: boolean;
+  rating: number;
+  review_count: number;
+  views_count: number;
+  emoji: string | null;
+  gradient_class: string | null;
+  category_name: string;
+  category_slug?: string;
+  primary_image?: string | null;
+}
+
+/* ----------------------------
+    API Calls
+    --------------------------*/
+    // get all products
+    const fetchProducts = async (): Promise<Product[]> => {
+      try {
+        const res = await fetch('http://localhost:4000/api/products', {cache: "no-store"});
+        if (!res.ok) throw new Error("Failed to fetch products");
+        const data = await res.json();
+        return data.products || [];
+      } catch (error){
+        console.error("Error loading products:", error);
+        return [];
+      }
+    };
+
+    
   const products = [
     { name: 'Tomatoes', stock: 120, sold: 80, price: 10 },
     { name: 'Lettuce', stock: 50, sold: 100, price: 8 },
     { name: 'Carrots', stock: 0, sold: 40, price: 6 },
-  ];
+  ]; 
 
   return (
     <div>

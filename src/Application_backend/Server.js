@@ -6,7 +6,8 @@
 */
 const express = require('express');
 const bodyParser = require('body-parser');
-const { Pool } = require('./DB.js');
+const db = require('./DB.js');
+const Pool = db.pool;
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
@@ -45,6 +46,17 @@ const requireAdmin = (req, res, next) => {
     }
     next();
 };
+
+// Test DB connection
+app.get('/api/test-db', async (req, res) => {
+    try {
+        const result = await Pool.query('SELECT NOW()');
+        res.json({ message: 'Database connected successfully', time: result.rows[0].now });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Database connection failed' });
+    }
+});
 
 // =====================================================
 // AUTHENTICATION ENDPOINTS
@@ -434,7 +446,7 @@ app.get('/api/categories', async (req, res) => {
 app.get('/api/cart', authenticateToken, async (req, res) => {
     try {
         const result = await Pool.query(
-            `SELECT ci.*, p.name, p.price, p.slug, p.emoji, p.gradient_class, p.stock_quantity
+            `SELECT ci.*, p.name, p.price, p.slug, p.emoji, p.gradient_class, p.stock_quantity, p.unit
              FROM cart_items ci
              JOIN products p ON ci.product_id = p.product_id
              WHERE ci.user_id = $1`,

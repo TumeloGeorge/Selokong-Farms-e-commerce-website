@@ -1,19 +1,48 @@
 'use client'
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { isUserLoggedIn } from './utils/auth';
 import Image from 'next/image';
 import { Menu, X, ShoppingCart, Leaf, Truck, Droplets, Users, Phone, Mail, MapPin, ArrowRight, Star } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import AccountDropdown from './AccountDropdown';
 
+// Product Type Based on The SQL Schema
+type Product = {
+  product_id: string;
+  name: string;
+  slug: string;
+  short_description: string;
+  full_description: string | null;
+  price: number;
+  unit: string;
+  emoji: string | null;
+  gradient_class: string | null;
+  rating: number;
+};
+
 export default function GreenSproutLanding() {
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [cartCount, setCartCount] = useState(0);
+
+  const [ products, setProducts] = useState<Product[]>([]); // products variable to hold DB data
+  // Fetch Products from DB
+  useEffect(() => {
+    async function fetchProducts() {
+      try {
+        const response = await fetch('http://localhost:4000/api/products'); // Product API endpoint
+        const data = await response.json();
+        setProducts(data.products || []);
+      } catch (error) {
+        console.error('Error fetching products:', error);
+      }
+    }
+    fetchProducts();
+  }, []);
   
   // To be replaced with DB data
-  const products = [
+  /*const products = [
     {
       id: 1,
       name: 'Fresh Potatoes',
@@ -44,7 +73,7 @@ export default function GreenSproutLanding() {
       gradient: 'from-orange-400 to-yellow-500',
       rating: 4.7
     }
-  ];
+  ];*/
   // To be replaced with DB data
   const services = [
     {
@@ -334,8 +363,8 @@ export default function GreenSproutLanding() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {products.map((product) => (
-              <div key={product.id} className="bg-white rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl transition-all transform hover:-translate-y-2">
-                <div className={`h-56 bg-gradient-to-br ${product.gradient} flex items-center justify-center relative overflow-hidden`}>
+              <div key={product.product_id} className="bg-white rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl transition-all transform hover:-translate-y-2">
+                <div className={`h-56 bg-gradient-to-br ${product.gradient_class} flex items-center justify-center relative overflow-hidden`}>
                   <div className="absolute inset-0 bg-white/10 backdrop-blur-sm"></div>
                   <div className="text-8xl relative z-10 transform hover:scale-110 transition-transform">
                     {product.emoji}
@@ -349,7 +378,7 @@ export default function GreenSproutLanding() {
                       <span className="text-sm font-semibold text-yellow-700">{product.rating}</span>
                     </div>
                   </div>
-                  <p className="text-gray-600 mb-6 leading-relaxed">{product.description}</p>
+                  <p className="text-gray-600 mb-6 leading-relaxed">{product.short_description}</p>
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <span className="text-3xl font-bold text-green-700">P{product.price}</span>

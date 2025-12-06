@@ -1,0 +1,26 @@
+CREATE TABLE products (
+    product_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    category_id UUID NOT NULL REFERENCES categories(category_id) ON DELETE RESTRICT,
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) UNIQUE NOT NULL,
+    short_description TEXT NOT NULL,
+    full_description TEXT,
+    price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
+    compare_at_price NUMERIC(10, 2) CHECK (compare_at_price >= price OR compare_at_price IS NULL),
+    unit VARCHAR(50) NOT NULL DEFAULT 'unit',
+    sku VARCHAR(100) UNIQUE,
+    stock_quantity INT NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
+    low_stock_threshold INT DEFAULT 10 CHECK (low_stock_threshold >= 0),
+    is_active BOOLEAN DEFAULT TRUE,
+    is_featured BOOLEAN DEFAULT FALSE,
+    rating NUMERIC(3, 2) DEFAULT 0.00 CHECK (rating >= 0 AND rating <= 5),
+    review_count INT DEFAULT 0 CHECK (review_count >= 0),
+    views_count INT DEFAULT 0 CHECK (views_count >= 0),
+    emoji VARCHAR(10),
+    gradient_class VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Full-text search
+    search_vector tsvector
+);

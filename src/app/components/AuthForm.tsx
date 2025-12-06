@@ -1,7 +1,7 @@
-// src/app/(components)/AuthForm.tsx
 "use client";
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Mail, Lock, Eye, EyeOff, Loader } from "lucide-react";
 
 interface AuthFormProps {
   type: "login" | "signup";
@@ -16,6 +16,7 @@ export default function AuthForm({ type }: AuthFormProps) {
     phone: "",
     password: "",
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,8 +30,7 @@ export default function AuthForm({ type }: AuthFormProps) {
     setError(null);
 
     try {
-      const url =
-        type === "login" ? "/api/auth/login" : "/api/auth/register";
+      const url = type === "login" ? "/api/auth/login" : "/api/auth/register";
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}${url}`,
         {
@@ -41,9 +41,8 @@ export default function AuthForm({ type }: AuthFormProps) {
       );
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Request failed");
+      if (!res.ok) throw new Error(data.error || "Authentication failed");
 
-      // Save token and redirect
       localStorage.setItem("token", data.token);
       router.push("/");
     } catch (err: any) {
@@ -54,91 +53,148 @@ export default function AuthForm({ type }: AuthFormProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
-      <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-8 space-y-6">
-        <h2 className="text-2xl font-bold text-center text-gray-800">
-          {type === "login" ? "Welcome Back 👋" : "Create Your Account"}
-        </h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {type === "signup" && (
-            <>
-              <div className="flex space-x-2">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-amber-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="bg-gradient-to-r from-green-600 to-green-700 p-8 text-white text-center">
+          <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-4xl">🌱</span>
+          </div>
+          <h1 className="text-3xl font-bold mb-2">
+            {type === "login" ? "Welcome Back!" : "Join GreenSprout Farms"}
+          </h1>
+          <p className="text-green-100">
+            {type === "login"
+              ? "Sign in to continue"
+              : "Create your account below"}
+          </p>
+        </div>
+
+        <div className="p-8">
+          {error && (
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded mb-6">
+              <p className="text-red-700 text-sm">{error}</p>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {type === "signup" && (
+              <>
+                <div className="flex space-x-2">
+                  <input
+                    name="first_name"
+                    onChange={handleChange}
+                    placeholder="First Name"
+                    required
+                    className="w-1/2 border-2 border-gray-300 rounded-lg p-3 focus:border-green-500 focus:outline-none"
+                  />
+                  <input
+                    name="last_name"
+                    onChange={handleChange}
+                    placeholder="Last Name"
+                    required
+                    className="w-1/2 border-2 border-gray-300 rounded-lg p-3 focus:border-green-500 focus:outline-none"
+                  />
+                </div>
                 <input
-                  name="first_name"
-                  placeholder="First Name"
+                  name="phone"
                   onChange={handleChange}
-                  required
-                  className="w-1/2 border p-2 rounded text-black placeholder-gray-500"
+                  placeholder="Phone"
+                  className="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-green-500 focus:outline-none"
                 />
+              </>
+            )}
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Email Address
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <input
-                  name="last_name"
-                  placeholder="Last Name"
+                  type="email"
+                  name="email"
                   onChange={handleChange}
                   required
-                  className="w-1/2 border p-2 rounded text-black placeholder-gray-500"
+                  className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none transition-colors"
+                  placeholder="you@example.com"
                 />
               </div>
-              <input
-                name="phone"
-                type="tel"
-                placeholder="Phone Number"
-                onChange={handleChange}
-                className="w-full border p-2 rounded text-black placeholder-gray-500"
-              />
-            </>
-          )}
-          <input
-            name="email"
-            type="email"
-            placeholder="Email"
-            onChange={handleChange}
-            required
-            className="w-full border p-2 rounded text-black placeholder-gray-500"
-          />
-          <input
-            name="password"
-            type="password"
-            placeholder="Password"
-            onChange={handleChange}
-            required
-            className="w-full border p-2 rounded text-black placeholder-gray-500"
-          />
-          {error && <p className="text-red-500 text-sm">{error}</p>}
-          <button
-            disabled={loading}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded-md transition"
-          >
-            {loading
-              ? "Please wait..."
-              : type === "login"
-              ? "Log In"
-              : "Sign Up"}
-          </button>
-        </form>
+            </div>
 
-        <p className="text-center text-sm text-gray-600">
-          {type === "login" ? (
-            <>
-              Don’t have an account?{" "}
-              <a
-                href="/signup"
-                className="text-indigo-600 hover:underline font-medium"
-              >
-                Sign up
-              </a>
-            </>
-          ) : (
-            <>
-              Already have an account?{" "}
-              <a
-                href="/login"
-                className="text-indigo-600 hover:underline font-medium"
-              >
-                Log in
-              </a>
-            </>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  onChange={handleChange}
+                  required
+                  className="w-full pl-12 pr-12 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none transition-colors"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-green-600 to-green-700 text-white py-3 rounded-lg font-bold text-lg hover:from-green-700 hover:to-green-800 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <Loader className="w-5 h-5 animate-spin" />
+                  Please wait...
+                </>
+              ) : type === "login" ? (
+                "Sign In"
+              ) : (
+                "Sign Up"
+              )}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center">
+            {type === "login" ? (
+              <p className="text-gray-600">
+                Don’t have an account?{" "}
+                <a
+                  href="/signup"
+                  className="text-green-600 hover:text-green-700 font-semibold"
+                >
+                  Sign up
+                </a>
+              </p>
+            ) : (
+              <p className="text-gray-600">
+                Already have an account?{" "}
+                <a
+                  href="/login"
+                  className="text-green-600 hover:text-green-700 font-semibold"
+                >
+                  Log in
+                </a>
+              </p>
+            )}
+          </div>
+
+          {type === "login" && (
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+              <p className="text-xs text-gray-600 text-center">
+                <strong>Demo:</strong> admin@greensprout.bw / Admin@123
+              </p>
+            </div>
           )}
-        </p>
+        </div>
       </div>
     </div>
   );
