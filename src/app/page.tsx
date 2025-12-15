@@ -41,40 +41,7 @@ export default function GreenSproutLanding() {
     fetchProducts();
   }, []);
   
-  // To be replaced with DB data
-  /*const products = [
-    {
-      id: 1,
-      name: 'Fresh Potatoes',
-      description: 'Certified seed potatoes, perfect for planting or cooking. Premium quality 5kg bags.',
-      price: 49.99,
-      unit: 'bag',
-      emoji: '🥔',
-      gradient: 'from-amber-400 to-orange-500',
-      rating: 4.8
-    },
-    {
-      id: 2,
-      name: 'Kito F1 Watermelon',
-      description: 'High-yield hybrid watermelon seedlings. Disease resistant and fast growing.',
-      price: 12.00,
-      unit: 'seedling',
-      emoji: '🍉',
-      gradient: 'from-red-400 to-pink-500',
-      rating: 4.9
-    },
-    {
-      id: 3,
-      name: 'Barbra Butternut',
-      description: 'Robust butternut variety with excellent storage qualities and sweet flavor.',
-      price: 8.00,
-      unit: 'seedling',
-      emoji: '🎃',
-      gradient: 'from-orange-400 to-yellow-500',
-      rating: 4.7
-    }
-  ];*/
-  // To be replaced with DB data
+  
   const services = [
     {
       icon: <Truck className="w-8 h-8" />,
@@ -471,7 +438,7 @@ export default function GreenSproutLanding() {
                   </div>
                   <div>
                     <h4 className="font-bold text-lg text-gray-900 mb-1">Location</h4>
-                    <p className="text-gray-700">A1-Malotwana Road<br />Gaborone, Botswana <br /> <a href="https://maps.app.goo.gl/csVqCa7CfWMiYnEF6" >Click here</a> for google Maps location</p>
+                    <p className="text-gray-700">A1-Malotwana Road<br />Gaborone, Botswana <br /> <a href="https://maps.app.goo.gl/csVqCa7CfWMiYnEF6" ><strong>Click here</strong></a> for google Maps location</p>
                   </div>
                 </div>
               </div>

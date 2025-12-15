@@ -2,13 +2,16 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, Lock, Eye, EyeOff, Loader } from "lucide-react";
+import { useAuth } from "../../context/authContext";
 
 interface AuthFormProps {
   type: "login" | "signup";
+  isAdmin?: boolean;
 }
 
-export default function AuthForm({ type }: AuthFormProps) {
+export default function AuthForm({ type, isAdmin = false }: AuthFormProps) {
   const router = useRouter();
+  const { login, register, isLoading } = useAuth();
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
@@ -17,7 +20,7 @@ export default function AuthForm({ type }: AuthFormProps) {
     password: "",
   });
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -26,29 +29,24 @@ export default function AuthForm({ type }: AuthFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
 
     try {
-      const url = type === "login" ? "/api/auth/login" : "/api/auth/register";
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}${url}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(form),
+      if (type === "login") {
+        await login(form.email, form.password);
+        // Check if user is admin and redirect accordingly
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        if (user.role === 'admin' || user.role === 'staff') {
+          router.push("/admin");
+        } else {
+          router.push("/");
         }
-      );
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Authentication failed");
-
-      localStorage.setItem("token", data.token);
-      router.push("/");
+      } else {
+        await register(form);
+        router.push("/");
+      }
     } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+      setError(err.message || "Authentication failed");
     }
   };
 
@@ -115,8 +113,8 @@ export default function AuthForm({ type }: AuthFormProps) {
                   name="email"
                   onChange={handleChange}
                   required
-                  className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none transition-colors"
-                  placeholder="you@example.com"
+                  className={`w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:border-${isAdmin ? 'red' : 'green'}-500 focus:outline-none transition-colors`}
+                  placeholder={isAdmin ? "admin@greensprout.bw" : "you@example.com"}
                 />
               </div>
             </div>
@@ -132,7 +130,7 @@ export default function AuthForm({ type }: AuthFormProps) {
                   name="password"
                   onChange={handleChange}
                   required
-                  className="w-full pl-12 pr-12 py-3 border-2 border-gray-300 rounded-lg focus:border-green-500 focus:outline-none transition-colors"
+                  className={`w-full pl-12 pr-12 py-3 border-2 border-gray-300 rounded-lg focus:border-${isAdmin ? 'red' : 'green'}-500 focus:outline-none transition-colors`}
                   placeholder="••••••••"
                 />
                 <button
@@ -147,10 +145,10 @@ export default function AuthForm({ type }: AuthFormProps) {
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-green-600 to-green-700 text-white py-3 rounded-lg font-bold text-lg hover:from-green-700 hover:to-green-800 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              disabled={isLoading}
+              className={`w-full bg-gradient-to-r ${isAdmin ? 'from-red-600 to-red-700 hover:from-red-700 hover:to-red-800' : 'from-green-600 to-green-700 hover:from-green-700 hover:to-green-800'} text-white py-3 rounded-lg font-bold text-lg transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
             >
-              {loading ? (
+              {isLoading ? (
                 <>
                   <Loader className="w-5 h-5 animate-spin" />
                   Please wait...

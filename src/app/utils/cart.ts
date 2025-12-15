@@ -43,8 +43,8 @@ export interface CartItem {
   stock_quantity?: number; // For validation
 }
 
+// Update the getCart function mapping
 export const cartUtils = {
-  // Get cart from localStorage or database based on auth status
   getCart: async (): Promise<CartItem[]> => {
     const isAuthenticated = authService.isAuthenticated();
 
@@ -66,26 +66,24 @@ export const cartUtils = {
         if (response.ok) {
           const dbCart = await response.json();
           
-          // ✅ FIX: Better data mapping with validation
-          return dbCart.map((item: any): CartItem => {
-            const cartItem: CartItem = {
-              product_id: item.product_id || '',
-              name: item.name || '',
-              price: parseFloat(item.price) || 0,
-              quantity: parseInt(item.quantity) || 0,
-              unit: item.unit || 'unit',
-              emoji: item.emoji || null,
-              gradient_class: item.gradient_class || '',
-              cart_item_id: item.cart_item_id || '',
-              stock_quantity: item.stock_quantity || 0,
-              product: {
+          // ✅ FIX: Better data mapping with validation and safe defaults
+          return dbCart.map((item: any): CartItem | null => {
+            try {
+              // Ensure we have minimal required data
+              if (!item || !item.product_id) {
+                console.warn('Invalid cart item detected:', item);
+                return null;
+              }
+
+              // Create safe product object with defaults
+              const product: Product = {
                 product_id: item.product_id || '',
-                name: item.name || '',
+                name: item.name || item.product_name || 'Unknown Product',
                 price: parseFloat(item.price) || 0,
                 unit: item.unit || 'unit',
-                emoji: item.emoji || null,
-                gradient_class: item.gradient_class || '',
-                stock_quantity: item.stock_quantity || 0,
+                emoji: item.emoji || item.product_emoji || '🛒',
+                gradient_class: item.gradient_class || item.product_gradient_class || 'from-gray-200 to-gray-300',
+                stock_quantity: item.stock_quantity || item.product_stock_quantity || 0,
                 category_id: item.category_id || '',
                 slug: item.slug || '',
                 short_description: item.short_description || '',
@@ -93,23 +91,47 @@ export const cartUtils = {
                 compare_at_price: item.compare_at_price || null,
                 sku: item.sku || '',
                 low_stock_threshold: item.low_stock_threshold || 0,
-                is_active: item.is_active || true,
-                is_featured: item.is_featured || false,
-                rating: item.rating || 0,
-                review_count: item.review_count || 0,
-                views_count: item.views_count || 0,
+                is_active: item.is_active ?? true,
+                is_featured: item.is_featured ?? false,
+                rating: parseFloat(item.rating) || 0,
+                review_count: parseInt(item.review_count) || 0,
+                views_count: parseInt(item.views_count) || 0,
                 category_name: item.category_name || '',
                 primary_image: item.primary_image || null
-              },
-              subtotal: (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 0)
-            };
-            return cartItem;
-          }).filter((item: CartItem) => item.product_id && item.quantity > 0);
+              };
+
+              const cartItem: CartItem = {
+                product_id: item.product_id,
+                name: product.name, // Use product.name as fallback
+                price: product.price,
+                quantity: parseInt(item.quantity) || 1,
+                unit: product.unit,
+                emoji: product.emoji,
+                gradient_class: product.gradient_class,
+                cart_item_id: item.cart_item_id || '',
+                stock_quantity: product.stock_quantity,
+                product: product,
+                subtotal: (product.price) * (parseInt(item.quantity) || 1)
+              };
+              
+              return cartItem;
+            } catch (error) {
+              console.error('Error mapping cart item:', error, item);
+              return null;
+            }
+          }).filter((item: CartItem | null): item is CartItem => 
+            item !== null &&
+            !!item.product_id &&
+            item.quantity > 0 &&
+            !!item.product // Ensure product exists
+          );
         } else {
           console.error('Failed to fetch cart:', response.status);
+          return cartUtils.getLocalStorageCart();
         }
       } catch (error) {
         console.error('Failed to fetch cart from database:', error);
+        return cartUtils.getLocalStorageCart();
       }
     }
 
@@ -117,8 +139,10 @@ export const cartUtils = {
     return cartUtils.getLocalStorageCart();
   },
 
-  // Save cart to appropriate storage
-  saveCart: async (cartItems: CartItem[]): Promise<void> => {
+// ... rest of the functions remain the same
+
+// Save cart to appropriate storage
+saveCart: async (cartItems: CartItem[]): Promise<void> => {
     const isAuthenticated = authService.isAuthenticated();
 
     if (isAuthenticated) {
@@ -229,60 +253,71 @@ export const cartUtils = {
     }
   },
 
-  // Add item to cart
-  addToCart: async (
-    product: Product,
-    quantity: number = 1
-  ): Promise<void> => {
-    // ✅ FIX: Validate quantity
-    if (quantity <= 0) {
-      console.warn('Invalid quantity:', quantity);
-      return;
+  // Update the addToCart function in cart.ts
+addToCart: async (
+  product: Product,
+  quantity: number = 1
+): Promise<void> => {
+  // ✅ FIX: Ensure price is a number
+  const price = typeof product.price === 'string' ? parseFloat(product.price) : Number(product.price);
+  
+  if (quantity <= 0) {
+    console.warn('Invalid quantity:', quantity);
+    return;
+  }
+
+  if (isNaN(price) || price <= 0) {
+    throw new Error(`Invalid price for product: ${product.name}`);
+  }
+
+  const cartItems = await cartUtils.getCart();
+  const existingItem = cartItems.find(
+    item => item.product_id === product.product_id
+  );
+
+  let updatedCart: CartItem[];
+  
+  if (existingItem) {
+    const newQuantity = existingItem.quantity + quantity;
+    if (product.stock_quantity && newQuantity > product.stock_quantity) {
+      throw new Error(`Only ${product.stock_quantity} items available in stock`);
     }
 
-    const cartItems = await cartUtils.getCart();
-    const existingItem = cartItems.find(
-      item => item.product_id === product.product_id
+    updatedCart = cartItems.map(item =>
+      item.product_id === product.product_id
+        ? { 
+            ...item, 
+            quantity: newQuantity,
+            subtotal: price * newQuantity // ✅ Recalculate with validated price
+          }
+        : item
     );
-
-    let updatedCart: CartItem[];
-    
-    if (existingItem) {
-      // ✅ FIX: Check stock availability
-      const newQuantity = existingItem.quantity + quantity;
-      if (product.stock_quantity && newQuantity > product.stock_quantity) {
-        throw new Error(`Only ${product.stock_quantity} items available in stock`);
-      }
-
-      updatedCart = cartItems.map(item =>
-        item.product_id === product.product_id
-          ? { ...item, quantity: newQuantity }
-          : item
-      );
-    } else {
-      // ✅ FIX: Check stock for new item
-      if (product.stock_quantity && quantity > product.stock_quantity) {
-        throw new Error(`Only ${product.stock_quantity} items available in stock`);
-      }
-
-      const newCartItem: CartItem = {
-        product_id: product.product_id,
-        name: product.name,
-        price: product.price,
-        quantity,
-        unit: product.unit,
-        emoji: product.emoji,
-        gradient_class: product.gradient_class,
-        stock_quantity: product.stock_quantity,
-        product,
-        subtotal: product.price * quantity
-      };
-      updatedCart = [...cartItems, newCartItem];
+  } else {
+    if (product.stock_quantity && quantity > product.stock_quantity) {
+      throw new Error(`Only ${product.stock_quantity} items available in stock`);
     }
 
-    await cartUtils.saveCart(updatedCart);
-    await cartUtils.updateCartCounter();
-  },
+    const newCartItem: CartItem = {
+      product_id: product.product_id,
+      name: product.name,
+      price: price, // ✅ Use validated price
+      quantity,
+      unit: product.unit,
+      emoji: product.emoji,
+      gradient_class: product.gradient_class,
+      stock_quantity: product.stock_quantity,
+      product: {
+        ...product,
+        price: price // ✅ Ensure product has validated price
+      },
+      subtotal: price * quantity
+    };
+    updatedCart = [...cartItems, newCartItem];
+  }
+
+  await cartUtils.saveCart(updatedCart);
+  await cartUtils.updateCartCounter();
+},
 
   // Update item quantity
   updateQuantity: async (productId: string, quantity: number): Promise<void> => {

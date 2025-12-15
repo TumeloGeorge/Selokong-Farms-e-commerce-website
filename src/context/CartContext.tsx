@@ -1,7 +1,7 @@
 'use client';
 
 import { CartItem, cartUtils } from "@/app/utils/cart";
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 interface CartContextType {
   cart: CartItem[];
@@ -12,19 +12,51 @@ interface CartContextType {
   getSubtotal: () => number;
   getTotal: () => number;
   getItemCount: () => number;
+  isLoading: boolean;
 }
+
+// Add this helper function at the top of CartContext.tsx
+const safeToNumber = (value: any): number => {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const num = parseFloat(value);
+    return isNaN(num) ? 0 : num;
+  }
+  return 0;
+};
+
+
+
+
 
 const CartContext = createContext<CartContextType | null>(null);
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadCart = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const cartItems = await cartUtils.getCart();
+      // ✅ Filter out any items with invalid products
+      const validItems = cartItems.filter(item => 
+        item && 
+        item.product && 
+        typeof item.product === 'object' &&
+        item.product.name
+      );
+      setCart(validItems);
+    } catch (error) {
+      console.error('Failed to load cart:', error);
+      setCart([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   // Load cart on mount
   useEffect(() => {
-    const loadCart = async () => {
-      const cartItems = await cartUtils.getCart();
-      setCart(cartItems);
-    };
     loadCart();
 
     // Listen for cart updates
@@ -36,32 +68,53 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       window.removeEventListener('cartUpdated', handleCartUpdate);
     };
-  }, []);
+  }, [loadCart]);
 
   const addToCart = async (product: any, quantity: number) => {
-    await cartUtils.addToCart(product, quantity);
-    const updatedCart = await cartUtils.getCart();
-    setCart(updatedCart);
+    try {
+      await cartUtils.addToCart(product, quantity);
+      await loadCart();
+    } catch (error) {
+      console.error('Failed to add to cart:', error);
+      throw error; // Re-throw for UI to handle
+    }
   };
 
   const updateQuantity = async (productId: string, quantity: number) => {
-    await cartUtils.updateQuantity(productId, quantity);
-    const updatedCart = await cartUtils.getCart();
-    setCart(updatedCart);
+    try {
+      await cartUtils.updateQuantity(productId, quantity);
+      await loadCart();
+    } catch (error) {
+      console.error('Failed to update quantity:', error);
+      throw error;
+    }
   };
 
   const removeFromCart = async (productId: string) => {
-    await cartUtils.removeFromCart(productId);
-    const updatedCart = await cartUtils.getCart();
-    setCart(updatedCart);
+    try {
+      await cartUtils.removeFromCart(productId);
+      await loadCart();
+    } catch (error) {
+      console.error('Failed to remove from cart:', error);
+    }
   };
 
   const clearCart = async () => {
-    await cartUtils.clearCart();
-    setCart([]);
+    try {
+      await cartUtils.clearCart();
+      setCart([]);
+    } catch (error) {
+      console.error('Failed to clear cart:', error);
+    }
   };
 
-  const getSubtotal = () => cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const getSubtotal = () => {
+  return cart.reduce((sum, item) => {
+    const price = safeToNumber(item?.price || item?.product?.price);
+    const quantity = safeToNumber(item?.quantity);
+    return sum + (price * quantity);
+  }, 0);
+  };
 
   const getTotal = () => {
     const subtotal = getSubtotal();
@@ -69,10 +122,23 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return subtotal + deliveryFee;
   };
 
-  const getItemCount = () => cart.reduce((sum, item) => sum + item.quantity, 0);
+  // Updated the getItemCount function
+  const getItemCount = () => {
+    return cart.reduce((sum, item) => sum + safeToNumber(item?.quantity), 0);
+  };
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, updateQuantity, removeFromCart, clearCart, getSubtotal, getTotal, getItemCount }}>
+    <CartContext.Provider value={{ 
+      cart, 
+      addToCart, 
+      updateQuantity, 
+      removeFromCart, 
+      clearCart, 
+      getSubtotal, 
+      getTotal, 
+      getItemCount,
+      isLoading 
+    }}>
       {children}
     </CartContext.Provider>
   );
