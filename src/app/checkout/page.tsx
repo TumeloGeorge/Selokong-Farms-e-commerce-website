@@ -380,14 +380,14 @@ export default function AmazonStyleCheckout() {
   };
 
   // Open address form with some default values if user is authenticated
-  const handleAddNewAddress = () => {
+  const handleAddNewAddress = async () => {
     if (authService.isAuthenticated()) {
-      const user = authService.getCurrentUser();
+      const user = await authService.getCurrentUser();
       if (user) {
         setAddressFormData(prev => ({
           ...prev,
           full_name: user.name || "",
-          phone_number: user.phone || ""
+          phone_number: user.phone_number || ""
         }));
       }
     }

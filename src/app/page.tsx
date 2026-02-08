@@ -462,7 +462,7 @@ export default function GreenSproutLanding() {
                     <label className="block text-sm font-bold text-gray-700 mb-2">Your Name *</label>
                     <input 
                       type="text" 
-                      className="w-full border-2 border-gray-300 rounded-xl px-4 py-3 focus:border-green-500 focus:outline-none transition-colors"
+                      className="w-full border-2 text-gray-500 border-gray-300 rounded-xl px-4 py-3 focus:border-green-500 focus:outline-none transition-colors"
                       placeholder="John Doe"
                     />
                   </div>
@@ -471,7 +471,7 @@ export default function GreenSproutLanding() {
                     <label className="block text-sm font-bold text-gray-700 mb-2">Email or Phone *</label>
                     <input 
                       type="text" 
-                      className="w-full border-2 border-gray-300 rounded-xl px-4 py-3 focus:border-green-500 focus:outline-none transition-colors"
+                      className="w-full border-2 text-gray-500 border-gray-300 rounded-xl px-4 py-3 focus:border-green-500 focus:outline-none transition-colors"
                       placeholder="john@example.com"
                     />
                   </div>
@@ -480,7 +480,7 @@ export default function GreenSproutLanding() {
                     <label className="block text-sm font-bold text-gray-700 mb-2">Subject</label>
                     <input 
                       type="text" 
-                      className="w-full border-2 border-gray-300 rounded-xl px-4 py-3 focus:border-green-500 focus:outline-none transition-colors"
+                      className="w-full border-2 text-gray-500 border-gray-300 rounded-xl px-4 py-3 focus:border-green-500 focus:outline-none transition-colors"
                       placeholder="How can we help?"
                     />
                   </div>
@@ -489,7 +489,7 @@ export default function GreenSproutLanding() {
                     <label className="block text-sm font-bold text-gray-700 mb-2">Message *</label>
                     <textarea 
                       rows={5}
-                      className="w-full border-2 border-gray-300 rounded-xl px-4 py-3 focus:border-green-500 focus:outline-none transition-colors resize-none"
+                      className="w-full border-2 text-gray-500 border-gray-300 rounded-xl px-4 py-3 focus:border-green-500 focus:outline-none transition-colors resize-none"
                       placeholder="Tell us what you need..."
                     />
                   </div>
