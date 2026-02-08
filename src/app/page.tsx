@@ -72,9 +72,9 @@ export default function GreenSproutLanding() {
   const handleViewProducts = () => {
     if (isUserLoggedIn()) {
       router.push('/products'); // if the user is logged in
-    }
-    else {
-      router.push('/login'); // if not logged in, redirect to login
+    } else {
+      // include a `next` query so user returns to products after login
+      router.push(`/login?next=${encodeURIComponent('/products')}`);
     }
   };
   const scrollToSection = (sectionId: string) => {

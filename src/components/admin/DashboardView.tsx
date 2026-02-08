@@ -1,12 +1,12 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { Bar, Line } from 'react-chartjs-2';
-import { Chart, BarElement, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
+import { Chart, BarElement, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend, BarController, LineController } from 'chart.js';
 import { TrendingUp, ShoppingCart, Users, Package, AlertCircle, DollarSign } from 'lucide-react';
 import { adminService } from '@/services/adminService';
 import { authService } from '@/services/authService';
 
-Chart.register(BarElement, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend);
+Chart.register(BarController, LineController, BarElement, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend);
 
 interface DashboardStats {
   totalUsers: number;

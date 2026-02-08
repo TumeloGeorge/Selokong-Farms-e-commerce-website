@@ -1,4 +1,5 @@
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   BarChart2,
@@ -7,6 +8,7 @@ import {
   FileText,
   LogOut,
 } from 'lucide-react';
+import { authService } from '../../services/authService';
 
 interface SidebarProps {
   activeView: string;
@@ -14,6 +16,13 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ activeView, setActiveView }: SidebarProps) {
+  const router = useRouter();
+
+  const handleLogout = () => {
+    authService.logout();
+    router.push('/login');
+  };
+
   const menuItems = [
     { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
     { key: 'analytics', label: 'Analytics', icon: <BarChart2 size={20} /> },
@@ -48,7 +57,7 @@ export default function Sidebar({ activeView, setActiveView }: SidebarProps) {
 
       <div className="p-4 border-t">
         <button
-          onClick={() => alert('Logging out...')}
+          onClick={handleLogout}
           className="flex items-center gap-3 w-full p-3 rounded-lg text-left text-gray-700 hover:bg-red-50 hover:text-red-600"
         >
           <LogOut size={20} />

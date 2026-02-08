@@ -120,7 +120,10 @@ export default function UserManager() {
       if (!token) throw new Error('Not authenticated');
 
       // Using the auth service register endpoint for admin-created users
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/auth/admin/register`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const endpoint = `${apiUrl}/api/auth/admin/register`;
+      
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -137,10 +140,20 @@ export default function UserManager() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const contentType = response.headers.get('content-type');
+        let errorData;
+        
+        if (contentType && contentType.includes('application/json')) {
+          errorData = await response.json();
+        } else {
+          const text = await response.text();
+          errorData = { message: text || `HTTP ${response.status}: ${response.statusText}` };
+        }
+        
         throw new Error(errorData.message || 'Failed to add user');
       }
 
+      const data = await response.json();
       setSuccess('User added successfully!');
       setShowAddModal(false);
       resetNewUserForm();
@@ -175,7 +188,8 @@ export default function UserManager() {
       const token = authService.getToken();
       if (!token) throw new Error('Not authenticated');
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/admin/users/${userId}`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiUrl}/api/admin/users/${userId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -183,7 +197,16 @@ export default function UserManager() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const contentType = response.headers.get('content-type');
+        let errorData;
+        
+        if (contentType && contentType.includes('application/json')) {
+          errorData = await response.json();
+        } else {
+          const text = await response.text();
+          errorData = { message: text || `HTTP ${response.status}: ${response.statusText}` };
+        }
+        
         throw new Error(errorData.message || 'Failed to delete user');
       }
 
@@ -203,7 +226,8 @@ export default function UserManager() {
       const token = authService.getToken();
       if (!token) throw new Error('Not authenticated');
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/admin/users/${userId}/reset-password`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiUrl}/api/admin/users/${userId}/reset-password`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -213,7 +237,16 @@ export default function UserManager() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const contentType = response.headers.get('content-type');
+        let errorData;
+        
+        if (contentType && contentType.includes('application/json')) {
+          errorData = await response.json();
+        } else {
+          const text = await response.text();
+          errorData = { message: text || `HTTP ${response.status}: ${response.statusText}` };
+        }
+        
         throw new Error(errorData.message || 'Failed to reset password');
       }
 
@@ -233,7 +266,8 @@ export default function UserManager() {
       const token = authService.getToken();
       if (!token) throw new Error('Not authenticated');
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/admin/users/${userId}/status`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiUrl}/api/admin/users/${userId}/status`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -243,7 +277,16 @@ export default function UserManager() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const contentType = response.headers.get('content-type');
+        let errorData;
+        
+        if (contentType && contentType.includes('application/json')) {
+          errorData = await response.json();
+        } else {
+          const text = await response.text();
+          errorData = { message: text || `HTTP ${response.status}: ${response.statusText}` };
+        }
+        
         throw new Error(errorData.message || 'Failed to update user status');
       }
 
@@ -267,7 +310,8 @@ export default function UserManager() {
         ? selectedUsers 
         : users.filter(user => user.role === 'customer').map(user => user.user_id);
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/admin/users/send-promotions`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${apiUrl}/api/admin/users/send-promotions`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -277,7 +321,16 @@ export default function UserManager() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const contentType = response.headers.get('content-type');
+        let errorData;
+        
+        if (contentType && contentType.includes('application/json')) {
+          errorData = await response.json();
+        } else {
+          const text = await response.text();
+          errorData = { message: text || `HTTP ${response.status}: ${response.statusText}` };
+        }
+        
         throw new Error(errorData.message || 'Failed to send promotions');
       }
 
@@ -423,7 +476,7 @@ export default function UserManager() {
               <input
                 type="text"
                 placeholder="Search users by name, email, or phone..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 text-gray-500 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                 value={filters.search}
                 onChange={(e) => setFilters({...filters, search: e.target.value})}
               />
@@ -432,7 +485,7 @@ export default function UserManager() {
           
           <div>
             <select
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              className="w-full px-4 py-2 border text-gray-500 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
               value={filters.role}
               onChange={(e) => setFilters({...filters, role: e.target.value})}
             >
@@ -445,7 +498,7 @@ export default function UserManager() {
           
           <div>
             <select
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              className="w-full px-4 py-2 text-gray-500 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
               value={filters.status}
               onChange={(e) => setFilters({...filters, status: e.target.value})}
             >

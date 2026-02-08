@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
-import { ArrowLeft, ShoppingCart, Star, Filter, Search, Home } from "lucide-react";
+import { ArrowLeft, ShoppingCart, Star, Filter, Search, Home, LogIn } from "lucide-react";
 import { useRouter } from 'next/navigation';
 import { useCart } from '../../context/CartContext';
+import { useAuth } from '../../context/authContext';
 
 /* -----------------------------
    🔹 Type Definitions

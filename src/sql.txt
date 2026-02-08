@@ -1,0 +1,772 @@
+                                                                                                                                                                 -- =====================================================
+-- GreenSprout Farms - Complete Database Schema
+-- PostgreSQL Database with Full Constraints & Relations
+-- =====================================================
+
+-- Enable UUID extension for unique identifiers
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- =====================================================
+-- USERS & AUTHENTICATION
+-- =====================================================
+
+-- Users table (customers and admins)
+CREATE TABLE users (
+    user_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'customer' CHECK (role IN ('customer', 'admin', 'staff')),
+    is_active BOOLEAN DEFAULT TRUE,
+    is_verified BOOLEAN DEFAULT FALSE,
+    email_verified_at TIMESTAMP,
+    last_login_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Constraints
+    CONSTRAINT users_email_check CHECK (email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
+    CONSTRAINT users_phone_check CHECK (phone ~* '^\+?[0-9]{10,15}$')
+);
+
+-- User sessions for authentication tracking
+CREATE TABLE user_sessions (
+    session_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) NOT NULL,
+    ip_address INET,
+    user_agent TEXT,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT session_expires_check CHECK (expires_at > created_at)
+);
+
+-- Password reset tokens
+CREATE TABLE password_resets (
+    reset_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    used_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT reset_not_used CHECK (used_at IS NULL OR used_at <= CURRENT_TIMESTAMP)
+);
+
+-- =====================================================
+-- ADDRESSES
+-- =====================================================
+
+CREATE TABLE addresses (
+    address_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    full_name VARCHAR(200) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    address_line1 VARCHAR(255) NOT NULL,
+    address_line2 VARCHAR(255),
+    city VARCHAR(100) NOT NULL,
+    state_province VARCHAR(100),
+    postal_code VARCHAR(20),
+    country VARCHAR(100) DEFAULT 'Botswana',
+    is_default BOOLEAN DEFAULT FALSE,
+    address_type VARCHAR(20) DEFAULT 'shipping' CHECK (address_type IN ('shipping', 'billing', 'both')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT addresses_phone_check CHECK (phone ~* '^\+?[0-9]{10,15}$')
+);
+
+-- Ensure only one default address per user
+CREATE UNIQUE INDEX idx_one_default_address_per_user 
+ON addresses (user_id, is_default) 
+WHERE is_default = TRUE;
+
+-- =====================================================
+-- PRODUCTS
+-- =====================================================
+
+CREATE TABLE categories (
+    category_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) UNIQUE NOT NULL,
+    slug VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    parent_category_id UUID REFERENCES categories(category_id) ON DELETE SET NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    display_order INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE products (
+    product_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    category_id UUID NOT NULL REFERENCES categories(category_id) ON DELETE RESTRICT,
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) UNIQUE NOT NULL,
+    short_description TEXT NOT NULL,
+    full_description TEXT,
+    price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
+    compare_at_price NUMERIC(10, 2) CHECK (compare_at_price >= price OR compare_at_price IS NULL),
+    unit VARCHAR(50) NOT NULL DEFAULT 'unit',
+    sku VARCHAR(100) UNIQUE,
+    stock_quantity INT NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
+    low_stock_threshold INT DEFAULT 10 CHECK (low_stock_threshold >= 0),
+    is_active BOOLEAN DEFAULT TRUE,
+    is_featured BOOLEAN DEFAULT FALSE,
+    rating NUMERIC(3, 2) DEFAULT 0.00 CHECK (rating >= 0 AND rating <= 5),
+    review_count INT DEFAULT 0 CHECK (review_count >= 0),
+    views_count INT DEFAULT 0 CHECK (views_count >= 0),
+    emoji VARCHAR(10),
+    gradient_class VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Full-text search
+    search_vector tsvector
+);
+
+-- Product benefits (key selling points)
+CREATE TABLE product_benefits (
+    benefit_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id UUID NOT NULL REFERENCES products(product_id) ON DELETE CASCADE,
+    benefit_text VARCHAR(255) NOT NULL,
+    display_order INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Product specifications (technical details)
+CREATE TABLE product_specifications (
+    spec_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id UUID NOT NULL REFERENCES products(product_id) ON DELETE CASCADE,
+    spec_key VARCHAR(100) NOT NULL,
+    spec_value TEXT NOT NULL,
+    display_order INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT unique_spec_per_product UNIQUE(product_id, spec_key)
+);
+
+-- Product images
+CREATE TABLE product_images (
+    image_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id UUID NOT NULL REFERENCES products(product_id) ON DELETE CASCADE,
+    image_url VARCHAR(500) NOT NULL,
+    alt_text VARCHAR(255),
+    is_primary BOOLEAN DEFAULT FALSE,
+    display_order INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Ensure only one primary image per product
+CREATE UNIQUE INDEX idx_one_primary_image_per_product 
+ON product_images (product_id, is_primary) 
+WHERE is_primary = TRUE;
+
+-- =====================================================
+-- INVENTORY MANAGEMENT
+-- =====================================================
+
+CREATE TABLE inventory_transactions (
+    transaction_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id UUID NOT NULL REFERENCES products(product_id) ON DELETE RESTRICT,
+    transaction_type VARCHAR(20) NOT NULL CHECK (transaction_type IN ('purchase', 'sale', 'adjustment', 'return', 'damage')),
+    quantity INT NOT NULL,
+    previous_quantity INT NOT NULL,
+    new_quantity INT NOT NULL,
+    reference_id UUID, -- Links to order_id or other reference
+    notes TEXT,
+    created_by UUID REFERENCES users(user_id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT quantity_calculation_check CHECK (
+        (transaction_type IN ('purchase', 'return') AND new_quantity = previous_quantity + quantity) OR
+        (transaction_type IN ('sale', 'damage', 'adjustment') AND new_quantity = previous_quantity - ABS(quantity))
+    )
+);
+
+-- =====================================================
+-- ORDERS
+-- =====================================================
+
+CREATE TABLE orders (
+    order_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_number VARCHAR(50) UNIQUE NOT NULL,
+    user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+    
+    -- Customer information (saved even if user is deleted)
+    customer_name VARCHAR(200) NOT NULL,
+    customer_email VARCHAR(255),
+    customer_phone VARCHAR(20) NOT NULL,
+    
+    -- Delivery information
+    delivery_address_line1 VARCHAR(255) NOT NULL,
+    delivery_address_line2 VARCHAR(255),
+    delivery_city VARCHAR(100) NOT NULL,
+    delivery_state VARCHAR(100),
+    delivery_postal_code VARCHAR(20),
+    delivery_country VARCHAR(100) DEFAULT 'Botswana',
+    delivery_instructions TEXT,
+    
+    -- Order amounts
+    subtotal NUMERIC(10, 2) NOT NULL CHECK (subtotal >= 0),
+    delivery_fee NUMERIC(10, 2) NOT NULL DEFAULT 0.00 CHECK (delivery_fee >= 0),
+    discount_amount NUMERIC(10, 2) DEFAULT 0.00 CHECK (discount_amount >= 0),
+    tax_amount NUMERIC(10, 2) DEFAULT 0.00 CHECK (tax_amount >= 0),
+    total_amount NUMERIC(10, 2) NOT NULL CHECK (total_amount >= 0),
+    
+    -- Status tracking
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded')),
+    payment_status VARCHAR(20) NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'paid', 'failed', 'refunded', 'partially_refunded')),
+    payment_method VARCHAR(50) NOT NULL DEFAULT 'cod' CHECK (payment_method IN ('cod', 'card', 'mobile_money', 'bank_transfer')),
+    
+    -- Tracking
+    tracking_number VARCHAR(100),
+    courier_service VARCHAR(100),
+    
+    -- Important dates
+    confirmed_at TIMESTAMP,
+    shipped_at TIMESTAMP,
+    delivered_at TIMESTAMP,
+    cancelled_at TIMESTAMP,
+    
+    -- Metadata
+    ip_address INET,
+    user_agent TEXT,
+    notes TEXT,
+    admin_notes TEXT,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Constraints
+    CONSTRAINT order_total_check CHECK (total_amount = subtotal + delivery_fee + tax_amount - discount_amount),
+    CONSTRAINT order_dates_check CHECK (
+        (confirmed_at IS NULL OR confirmed_at >= created_at) AND
+        (shipped_at IS NULL OR shipped_at >= confirmed_at) AND
+        (delivered_at IS NULL OR delivered_at >= shipped_at)
+    )
+);
+
+-- Order items (products in each order)
+CREATE TABLE order_items (
+    order_item_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_id UUID NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(product_id) ON DELETE RESTRICT,
+    
+    -- Snapshot of product at time of order
+    product_name VARCHAR(255) NOT NULL,
+    product_sku VARCHAR(100),
+    unit_price NUMERIC(10, 2) NOT NULL CHECK (unit_price >= 0),
+    quantity INT NOT NULL CHECK (quantity > 0),
+    subtotal NUMERIC(10, 2) NOT NULL CHECK (subtotal >= 0),
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT order_item_subtotal_check CHECK (subtotal = unit_price * quantity)
+);
+
+-- Order status history (audit trail)
+CREATE TABLE order_status_history (
+    history_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_id UUID NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
+    from_status VARCHAR(20),
+    to_status VARCHAR(20) NOT NULL,
+    changed_by UUID REFERENCES users(user_id) ON DELETE SET NULL,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- PAYMENTS
+-- =====================================================
+
+CREATE TABLE payments (
+    payment_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_id UUID NOT NULL REFERENCES orders(order_id) ON DELETE RESTRICT,
+    payment_method VARCHAR(50) NOT NULL,
+    amount NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
+    currency VARCHAR(3) DEFAULT 'BWP',
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed', 'refunded', 'cancelled')),
+    
+    -- Payment gateway details
+    transaction_id VARCHAR(255),
+    gateway_response JSONB,
+    
+    -- Payment timestamps
+    completed_at TIMESTAMP,
+    failed_at TIMESTAMP,
+    refunded_at TIMESTAMP,
+    
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- REVIEWS & RATINGS
+-- =====================================================
+
+CREATE TABLE product_reviews (
+    review_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id UUID NOT NULL REFERENCES products(product_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    order_id UUID REFERENCES orders(order_id) ON DELETE SET NULL,
+    
+    rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    title VARCHAR(255),
+    review_text TEXT NOT NULL,
+    
+    is_verified_purchase BOOLEAN DEFAULT FALSE,
+    is_approved BOOLEAN DEFAULT FALSE,
+    
+    helpful_count INT DEFAULT 0 CHECK (helpful_count >= 0),
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- One review per product per user
+    CONSTRAINT unique_review_per_user_product UNIQUE(product_id, user_id)
+);
+
+-- Review images
+CREATE TABLE review_images (
+    review_image_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    review_id UUID NOT NULL REFERENCES product_reviews(review_id) ON DELETE CASCADE,
+    image_url VARCHAR(500) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- CART (SHOPPING CART)
+-- =====================================================
+
+CREATE TABLE cart_items (
+    cart_item_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(user_id) ON DELETE CASCADE,
+    session_id VARCHAR(255), -- For guest users
+    product_id UUID NOT NULL REFERENCES products(product_id) ON DELETE CASCADE,
+    quantity INT NOT NULL CHECK (quantity > 0),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Either user_id or session_id must be present
+    CONSTRAINT cart_user_or_session CHECK (
+        (user_id IS NOT NULL AND session_id IS NULL) OR
+        (user_id IS NULL AND session_id IS NOT NULL)
+    ),
+    
+    -- Unique product per user or session
+    CONSTRAINT unique_cart_item UNIQUE NULLS NOT DISTINCT (user_id, session_id, product_id)
+);
+
+-- =====================================================
+-- WISHLIST
+-- =====================================================
+
+CREATE TABLE wishlists (
+    wishlist_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(product_id) ON DELETE CASCADE,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT unique_wishlist_item UNIQUE(user_id, product_id)
+);
+
+-- =====================================================
+-- NOTIFICATIONS
+-- =====================================================
+
+CREATE TABLE notifications (
+    notification_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL CHECK (type IN ('order_update', 'product_back_in_stock', 'promotion', 'account', 'system')),
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    link VARCHAR(500),
+    is_read BOOLEAN DEFAULT FALSE,
+    read_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- COUPONS & PROMOTIONS
+-- =====================================================
+
+CREATE TABLE coupons (
+    coupon_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code VARCHAR(50) UNIQUE NOT NULL,
+    description TEXT,
+    discount_type VARCHAR(20) NOT NULL CHECK (discount_type IN ('percentage', 'fixed_amount')),
+    discount_value NUMERIC(10, 2) NOT NULL CHECK (discount_value > 0),
+    min_order_amount NUMERIC(10, 2) DEFAULT 0.00 CHECK (min_order_amount >= 0),
+    max_discount_amount NUMERIC(10, 2) CHECK (max_discount_amount >= 0),
+    usage_limit INT CHECK (usage_limit > 0),
+    usage_count INT DEFAULT 0 CHECK (usage_count >= 0),
+    valid_from TIMESTAMP NOT NULL,
+    valid_until TIMESTAMP NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT coupon_dates_check CHECK (valid_until > valid_from),
+    CONSTRAINT coupon_usage_check CHECK (usage_count <= usage_limit OR usage_limit IS NULL)
+);
+
+-- Coupon usage tracking
+CREATE TABLE coupon_usage (
+    usage_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    coupon_id UUID NOT NULL REFERENCES coupons(coupon_id) ON DELETE CASCADE,
+    order_id UUID NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+    discount_amount NUMERIC(10, 2) NOT NULL CHECK (discount_amount >= 0),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT unique_coupon_per_order UNIQUE(coupon_id, order_id)
+);
+
+-- =====================================================
+-- CONTACT MESSAGES
+-- =====================================================
+
+CREATE TABLE contact_messages (
+    message_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+    name VARCHAR(200) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    phone VARCHAR(20),
+    subject VARCHAR(255),
+    message TEXT NOT NULL,
+    status VARCHAR(20) DEFAULT 'new' CHECK (status IN ('new', 'in_progress', 'resolved', 'closed')),
+    replied_at TIMESTAMP,
+    replied_by UUID REFERENCES users(user_id) ON DELETE SET NULL,
+    admin_notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- ACTIVITY LOGS (AUDIT TRAIL)
+-- =====================================================
+
+CREATE TABLE activity_logs (
+    log_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
+    action VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id UUID,
+    old_values JSONB,
+    new_values JSONB,
+    ip_address INET,
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- INDEXES FOR PERFORMANCE
+-- =====================================================
+
+-- Users
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_users_created_at ON users(created_at);
+
+-- Sessions
+CREATE INDEX idx_sessions_user_id ON user_sessions(user_id);
+CREATE INDEX idx_sessions_expires_at ON user_sessions(expires_at);
+
+-- Addresses
+CREATE INDEX idx_addresses_user_id ON addresses(user_id);
+
+-- Products
+CREATE INDEX idx_products_category_id ON products(category_id);
+CREATE INDEX idx_products_slug ON products(slug);
+CREATE INDEX idx_products_is_active ON products(is_active) WHERE is_active = TRUE;
+CREATE INDEX idx_products_is_featured ON products(is_featured) WHERE is_featured = TRUE;
+CREATE INDEX idx_products_created_at ON products(created_at DESC);
+CREATE INDEX idx_products_search_vector ON products USING GIN(search_vector);
+
+-- Orders
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+CREATE INDEX idx_orders_order_number ON orders(order_number);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_payment_status ON orders(payment_status);
+CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
+
+-- Order Items
+CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX idx_order_items_product_id ON order_items(product_id);
+
+-- Reviews
+CREATE INDEX idx_reviews_product_id ON product_reviews(product_id);
+CREATE INDEX idx_reviews_user_id ON product_reviews(user_id);
+CREATE INDEX idx_reviews_is_approved ON product_reviews(is_approved) WHERE is_approved = TRUE;
+
+-- Cart
+CREATE INDEX idx_cart_user_id ON cart_items(user_id);
+CREATE INDEX idx_cart_session_id ON cart_items(session_id);
+
+-- Notifications
+CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX idx_notifications_is_read ON notifications(is_read) WHERE is_read = FALSE;
+
+-- =====================================================
+-- TRIGGERS FOR AUTOMATIC UPDATES
+-- =====================================================
+
+-- Update timestamp trigger function
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Apply trigger to relevant tables
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_addresses_updated_at BEFORE UPDATE ON addresses
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_products_updated_at BEFORE UPDATE ON products
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON orders
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_cart_items_updated_at BEFORE UPDATE ON cart_items
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Update product rating when review is added/updated
+CREATE OR REPLACE FUNCTION update_product_rating()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE products
+    SET 
+        rating = (
+            SELECT ROUND(AVG(rating)::numeric, 2)
+            FROM product_reviews
+            WHERE product_id = NEW.product_id AND is_approved = TRUE
+        ),
+        review_count = (
+            SELECT COUNT(*)
+            FROM product_reviews
+            WHERE product_id = NEW.product_id AND is_approved = TRUE
+        )
+    WHERE product_id = NEW.product_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_product_rating_on_review_insert
+AFTER INSERT ON product_reviews
+FOR EACH ROW EXECUTE FUNCTION update_product_rating();
+
+CREATE TRIGGER update_product_rating_on_review_update
+AFTER UPDATE ON product_reviews
+FOR EACH ROW EXECUTE FUNCTION update_product_rating();
+
+-- Update product search vector
+CREATE OR REPLACE FUNCTION update_product_search_vector()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.search_vector := 
+        setweight(to_tsvector('english', COALESCE(NEW.name, '')), 'A') ||
+        setweight(to_tsvector('english', COALESCE(NEW.short_description, '')), 'B') ||
+        setweight(to_tsvector('english', COALESCE(NEW.full_description, '')), 'C');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_product_search_vector_trigger
+BEFORE INSERT OR UPDATE ON products
+FOR EACH ROW EXECUTE FUNCTION update_product_search_vector();
+
+-- Auto-generate order number
+CREATE OR REPLACE FUNCTION generate_order_number()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.order_number := 'GS' || TO_CHAR(CURRENT_DATE, 'YYYYMMDD') || '-' || LPAD(NEXTVAL('order_number_seq')::TEXT, 6, '0');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE SEQUENCE order_number_seq START 1;
+
+CREATE TRIGGER generate_order_number_trigger
+BEFORE INSERT ON orders
+FOR EACH ROW EXECUTE FUNCTION generate_order_number();
+
+-- Track order status changes
+CREATE OR REPLACE FUNCTION track_order_status_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.status IS DISTINCT FROM NEW.status THEN
+        INSERT INTO order_status_history (order_id, from_status, to_status, notes)
+        VALUES (NEW.order_id, OLD.status, NEW.status, 'Status changed');
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER track_order_status_change_trigger
+AFTER UPDATE ON orders
+FOR EACH ROW EXECUTE FUNCTION track_order_status_change();
+
+-- =====================================================
+-- VIEWS FOR COMMON QUERIES
+-- =====================================================
+
+-- Active products with category info
+CREATE VIEW v_active_products AS
+SELECT 
+    p.product_id,
+    p.name,
+    p.slug,
+    p.short_description,
+    p.price,
+    p.compare_at_price,
+    p.unit,
+    p.stock_quantity,
+    p.is_featured,
+    p.rating,
+    p.review_count,
+    p.emoji,
+    p.gradient_class,
+    c.name AS category_name,
+    c.slug AS category_slug,
+    (SELECT image_url FROM product_images WHERE product_id = p.product_id AND is_primary = TRUE LIMIT 1) AS primary_image
+FROM products p
+JOIN categories c ON p.category_id = c.category_id
+WHERE p.is_active = TRUE AND c.is_active = TRUE;
+
+-- Order summary view
+CREATE VIEW v_order_summary AS
+SELECT 
+    o.order_id,
+    o.order_number,
+    o.customer_name,
+    o.customer_email,
+    o.customer_phone,
+    o.total_amount,
+    o.status,
+    o.payment_status,
+    o.payment_method,
+    o.created_at,
+    COUNT(oi.order_item_id) AS item_count,
+    u.email AS user_email
+FROM orders o
+LEFT JOIN order_items oi ON o.order_id = oi.order_id
+LEFT JOIN users u ON o.user_id = u.user_id
+GROUP BY o.order_id, u.email;
+
+-- =====================================================
+-- INITIAL DATA SETUP
+-- =====================================================
+
+-- Insert default admin user (password: Admin@123)
+INSERT INTO users (email, password_hash, first_name, last_name, phone, role, is_verified)
+VALUES (
+    'admin@greensprout.bw',
+    '$2a$10$XQxQ9Zo5hGvV5xJ5xJ5xJ5xJ5xJ5xJ5xJ5xJ5xJ5xJ5xJ5xJ5xJ5x', -- Replace with actual bcrypt hash
+    'System',
+    'Administrator',
+    '+267712345678',
+    'admin',
+    TRUE
+);
+
+-- Insert default categories
+INSERT INTO categories (name, slug, description, display_order) VALUES
+('Vegetables', 'vegetables', 'Fresh vegetables and produce', 1),
+('Seedlings', 'seedlings', 'High-quality seedlings for planting', 2),
+('Seeds', 'seeds', 'Premium seeds for various crops', 3),
+('Tools', 'tools', 'Farming tools and equipment', 4);
+
+-- =====================================================
+-- COMMENTS & DOCUMENTATION
+-- =====================================================
+
+COMMENT ON TABLE users IS 'User accounts for customers and administrators';
+COMMENT ON TABLE products IS 'Product catalog with full details and inventory';
+COMMENT ON TABLE orders IS 'Customer orders with full order history';
+COMMENT ON TABLE order_items IS 'Line items for each order';
+COMMENT ON TABLE payments IS 'Payment transactions for orders';
+COMMENT ON TABLE product_reviews IS 'Customer reviews and ratings for products';
+COMMENT ON TABLE cart_items IS 'Shopping cart items for users and guest sessions';
+COMMENT ON TABLE coupons IS 'Discount coupons and promotional codes';
+COMMENT ON TABLE activity_logs IS 'Audit trail for all important system actions';
+
+-- =====================================================
+-- SECURITY POLICIES (ROW LEVEL SECURITY - Optional)
+-- =====================================================
+
+-- Enable RLS on sensitive tables
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE addresses ENABLE ROW LEVEL SECURITY;
+
+-- Users can only see their own data
+CREATE POLICY user_self_access ON users
+    FOR ALL
+    USING (user_id = current_setting('app.current_user_id')::UUID);
+
+-- Users can only see their own orders
+CREATE POLICY user_orders_access ON orders
+    FOR SELECT
+    USING (user_id = current_setting('app.current_user_id')::UUID);
+
+-- Users can only see their own addresses
+CREATE POLICY user_addresses_access ON addresses
+    FOR ALL
+    USING (user_id = current_setting('app.current_user_id')::UUID);
+
+-- =====================================================
+-- GRANT PERMISSIONS
+-- =====================================================
+
+-- Create application role
+CREATE ROLE greensprout_app WITH LOGIN PASSWORD 'secure_password_here';
+
+-- Grant necessary permissions
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO greensprout_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO greensprout_app;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO greensprout_app;
+
+-- =====================================================
+-- END OF SCHEMA
+-- =====================================================
+
+
+select * from users
+
+INSERT INTO users (email, password_hash, first_name, last_name, phone, role, is_verified)
+VALUES (
+    'admin@greensprout.bw',
+    '$2a$10$XQxQ9Zo5hGvV5xJ5xJ5xJ5xJ5xJ5xJ5xJ5xJ5xJ5xJ5xJ5xJ5xJ5x', -- Replace with actual bcrypt hash
+    'System',
+    'Administrator',
+    '+267712345678',
+    'admin',
+    TRUE
+);
+
+update users set is_verified='true' where first_name = 'admin'
+
+select * from products
+
+select * from categories
+
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    user_id UUID PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+    token TEXT NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+select * from cart_items
+
+select * from addresses
+

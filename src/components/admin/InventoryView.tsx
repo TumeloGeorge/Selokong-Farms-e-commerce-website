@@ -1,210 +1,268 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { Bar, Line } from 'react-chartjs-2';
-import { Chart, BarElement, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
-import { TrendingUp, ShoppingCart, Users, Package, AlertCircle, DollarSign } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { adminService } from '@/services/adminService';
 import { authService } from '@/services/authService';
 
-Chart.register(BarElement, LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend);
-
-interface DashboardStats {
-  totalUsers: number;
-  totalOrders: number;
-  totalRevenue: number;
-  pendingOrders: number;
-  outOfStock: number;
-  weeklyVisits: number[];
-  recentOrders: any[];
-  topProducts: any[];
+interface Product {
+  product_id: string;
+  name: string;
+  stock_quantity: number;
+  sold_count?: number;
+  price: number;
 }
 
-export default function DashboardView() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+export default function InventoryView() {
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    stock_quantity: '',
+    price: ''
+  });
 
   useEffect(() => {
-    loadDashboardData();
+    loadProducts();
   }, []);
 
-  const loadDashboardData = async () => {
+  const loadProducts = async () => {
     try {
       setLoading(true);
+      setError('');
       const token = authService.getToken();
       if (!token) throw new Error('Not authenticated');
 
-      const data = await adminService.getDashboardStats(token);
-      setStats(data);
+      const data = await adminService.getProducts(token);
+      // adminService.getProducts may return an array or an object with `products` key
+      const fetched: any = Array.isArray(data) ? data : (data.products || data);
+
+      setProducts(fetched.map((p: any) => ({
+        product_id: p.product_id || p.id || String(p._id || ''),
+        name: p.name || 'Unnamed product',
+        stock_quantity: Number(p.stock_quantity ?? p.stock ?? 0),
+        sold_count: Number(p.sold_count ?? p.sold ?? 0),
+        price: Number(p.price ?? 0)
+      })));
     } catch (err: any) {
-      setError(err.message);
-      console.error('Failed to load dashboard:', err);
+      setError(err.message || 'Failed to load products');
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin w-12 h-12 border-4 border-green-600 border-t-transparent rounded-full"></div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">Error: {error}</p>
-        <button onClick={loadDashboardData} className="mt-2 text-red-600 underline">
-          Retry
-        </button>
-      </div>
-    );
-  }
-
-  const visitsData = {
-    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    datasets: [
-      {
-        label: 'Website Visits',
-        data: stats?.weeklyVisits || [120, 190, 300, 500, 200, 300, 400],
-        backgroundColor: 'rgba(16, 185, 129, 0.5)',
-        borderColor: '#10B981',
-        borderWidth: 1,
-      },
-    ],
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this product? This cannot be undone.')) return;
+    try {
+      const token = authService.getToken();
+      if (!token) throw new Error('Not authenticated');
+      await adminService.deleteProduct(token, id);
+      setProducts(products.filter(p => p.product_id !== id));
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete product');
+    }
   };
 
-  const metrics = [
-    { 
-      label: 'Total Users', 
-      value: stats?.totalUsers || 0, 
-      color: 'text-green-700',
-      icon: Users,
-      bgColor: 'bg-green-100'
-    },
-    { 
-      label: 'Pending Orders', 
-      value: stats?.pendingOrders || 0, 
-      color: 'text-blue-700',
-      icon: ShoppingCart,
-      bgColor: 'bg-blue-100'
-    },
-    { 
-      label: 'Total Revenue', 
-      value: `P${stats?.totalRevenue?.toFixed(2) || '0.00'}`, 
-      color: 'text-emerald-700',
-      icon: DollarSign,
-      bgColor: 'bg-emerald-100'
-    },
-    { 
-      label: 'Out of Stock', 
-      value: stats?.outOfStock || 0, 
-      color: 'text-red-600',
-      icon: AlertCircle,
-      bgColor: 'bg-red-100'
-    },
-  ];
+  const handleEdit = async (product: Product) => {
+    setEditingProduct(product);
+    setFormData({
+      name: product.name,
+      stock_quantity: String(product.stock_quantity),
+      price: String(product.price)
+    });
+    setShowForm(true);
+  };
+
+  const handleAdd = () => {
+    setEditingProduct(null);
+    setFormData({
+      name: '',
+      stock_quantity: '',
+      price: ''
+    });
+    setShowForm(true);
+  };
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const stock = Number(formData.stock_quantity);
+    const price = Number(formData.price);
+
+    if (!formData.name.trim()) {
+      alert('Product name is required');
+      return;
+    }
+    if (Number.isNaN(stock) || Number.isNaN(price)) {
+      alert('Stock and price must be valid numbers');
+      return;
+    }
+
+    try {
+      const token = authService.getToken();
+      if (!token) throw new Error('Not authenticated');
+
+      if (editingProduct) {
+        // Update existing product
+        await adminService.updateProduct(token, editingProduct.product_id, {
+          name: formData.name,
+          stock_quantity: stock,
+          price: price
+        });
+
+        setProducts(products.map(p =>
+          p.product_id === editingProduct.product_id
+            ? { ...p, name: formData.name, stock_quantity: stock, price: price }
+            : p
+        ));
+      } else {
+        // Create new product
+        const created = await adminService.createProduct(token, {
+          name: formData.name,
+          stock_quantity: stock,
+          price: price
+        });
+
+        const createdProduct = created?.product || created;
+        setProducts(prev => [
+          {
+            product_id: createdProduct.product_id || createdProduct.id || String(createdProduct._id || Date.now()),
+            name: createdProduct.name || formData.name,
+            stock_quantity: Number(createdProduct.stock_quantity ?? stock),
+            sold_count: Number(createdProduct.sold_count ?? 0),
+            price: Number(createdProduct.price ?? price)
+          },
+          ...prev
+        ]);
+      }
+
+      setShowForm(false);
+      setFormData({ name: '', stock_quantity: '', price: '' });
+    } catch (err: any) {
+      setError(err.message || 'Failed to save product');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-48">
+        <div className="animate-spin w-12 h-12 border-4 border-green-600 border-t-transparent rounded-full mb-4"></div>
+        <p className="text-gray-600">Loading products...</p>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Dashboard Overview</h2>
-        <button
-          onClick={loadDashboardData}
-          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-        >
-          Refresh
-        </button>
-      </div>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Inventory Management</h2>
 
-      {/* Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
-        {metrics.map((metric) => {
-          const Icon = metric.icon;
-          return (
-            <div key={metric.label} className="bg-white shadow rounded-lg p-6 hover:shadow-lg transition-shadow">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-gray-500 text-sm">{metric.label}</p>
-                <div className={`p-3 rounded-full ${metric.bgColor}`}>
-                  <Icon className={`w-6 h-6 ${metric.color}`} />
-                </div>
-              </div>
-              <h3 className={`text-3xl font-bold ${metric.color}`}>{metric.value}</h3>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Weekly Website Visits</h3>
-          <Bar data={visitsData} options={{ responsive: true, maintainAspectRatio: true }} />
+      {error && (
+        <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded mb-4">
+          <p className="text-red-700">{error}</p>
         </div>
+      )}
 
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Top Products</h3>
-          <div className="space-y-3">
-            {stats?.topProducts?.slice(0, 5).map((product: any, index: number) => (
-              <div key={`${product.name}-${index}`} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">{product.emoji || '📦'}</span>
-                  <div>
-                    <p className="font-semibold">{product.name}</p>
-                    <p className="text-sm text-gray-600">{product.sales_count} sales</p>
-                  </div>
+      <button onClick={handleAdd} className="mb-4 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+        + Add Product
+      </button>
+
+      <table className="w-full bg-white text-black shadow rounded-lg">
+        <thead>
+          <tr className="text-left bg-gray-50 border-b">
+            <th className="p-3">Product</th>
+            <th className="p-3">Stock</th>
+            <th className="p-3">Sold</th>
+            <th className="p-3">Price (P)</th>
+            <th className="p-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {products.map((p) => (
+            <tr key={p.product_id} className="border-b text-black hover:bg-gray-50">
+              <td className="p-3">{p.name}</td>
+              <td className={`p-3 ${p.stock_quantity === 0 ? 'text-red-600 font-semibold' : 'text-gray-700'}`}>{p.stock_quantity}</td>
+              <td className="p-3 text-gray-700">{p.sold_count ?? 0}</td>
+              <td className="p-3 text-gray-700">{p.price}</td>
+              <td className="p-3">
+                <button onClick={() => handleEdit(p)} className="text-blue-600 hover:underline mr-2">Edit</button>
+                <button onClick={() => handleDelete(p.product_id)} className="text-red-600 hover:underline">Delete</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Product Form Modal */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                {editingProduct ? 'Edit Product' : 'Add New Product'}
+              </h3>
+
+              <form onSubmit={handleFormSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Product Name
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="e.g., Tomatoes"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  />
                 </div>
-                <span className="font-bold text-green-700">P{product.total_revenue}</span>
-              </div>
-            ))}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Stock Quantity
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="0"
+                    value={formData.stock_quantity}
+                    onChange={(e) => setFormData({ ...formData, stock_quantity: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Price (₱)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder="0.00"
+                    value={formData.price}
+                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowForm(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    {editingProduct ? 'Update' : 'Add'} Product
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* Recent Orders */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">Recent Orders</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Order #</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Customer</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Total</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {stats?.recentOrders?.map((order: any) => (
-                <tr key={order.order_id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-medium">{order.order_number}</td>
-                  <td className="px-4 py-3 text-sm">{order.customer_name}</td>
-                  <td className="px-4 py-3 text-sm font-semibold">P{order.total_amount}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                      order.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
-                      order.status === 'processing' ? 'bg-blue-100 text-blue-800' :
-                      order.status === 'shipped' ? 'bg-purple-100 text-purple-800' :
-                      order.status === 'delivered' ? 'bg-green-100 text-green-800' :
-                      order.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {order.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {new Date(order.created_at).toLocaleDateString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

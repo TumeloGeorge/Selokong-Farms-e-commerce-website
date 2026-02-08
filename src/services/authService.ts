@@ -37,16 +37,20 @@ export const authService = {
   // Store token in localStorage
   setToken: (token: string) => {
     localStorage.setItem('auth_token', token);
+    // also set legacy key 'token' used elsewhere in the app for compatibility
+    localStorage.setItem('token', token);
   },
 
   // Get token from localStorage
   getToken: (): string | null => {
-    return localStorage.getItem('auth_token');
+    // prefer the canonical key but fall back to legacy key
+    return localStorage.getItem('auth_token') || localStorage.getItem('token');
   },
 
   // Remove token
   removeToken: () => {
     localStorage.removeItem('auth_token');
+    localStorage.removeItem('token');
   },
 
   // Store user data

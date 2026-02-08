@@ -32,7 +32,7 @@ export const adminService = {
 
       // Calculate stats from existing data
       const totalOrders = orders.length;
-      const totalRevenue = orders.reduce((sum: number, order: any) => sum + (order.total_amount || 0), 0);
+      const totalRevenue = orders.reduce((sum: number, order: any) => sum + Number(order.total_amount || 0), 0);
       const pendingOrders = orders.filter((order: any) => order.status === 'pending').length;
       const outOfStock = products.filter((product: any) => product.stock_quantity <= 0).length;
 
@@ -223,7 +223,7 @@ const topProducts = products.slice(0, 5).map((product: any, index: number) => ({
       return {
         summary: {
           totalOrders: orders.length,
-          totalRevenue: orders.reduce((sum: number, order: any) => sum + (order.total_amount || 0), 0),
+          totalRevenue: orders.reduce((sum: number, order: any) => sum + Number(order.total_amount || 0), 0),
           averageOrderValue: orders.length > 0 
             ? orders.reduce((sum: number, order: any) => sum + (order.total_amount || 0), 0) / orders.length
             : 0,
@@ -240,21 +240,47 @@ const topProducts = products.slice(0, 5).map((product: any, index: number) => ({
     }
   },
 
-  // Get users - Since no user API exists, we'll use mock data
+  // Get users
   getUsers: async (token: string) => {
-    // Return mock data since there's no /admin/users endpoint
-    return [
-      { user_id: 1, email: 'admin@example.com', first_name: 'Admin', last_name: 'User', role: 'admin', created_at: '2024-01-01' },
-      { user_id: 2, email: 'staff@example.com', first_name: 'Staff', last_name: 'User', role: 'staff', created_at: '2024-01-02' },
-      { user_id: 3, email: 'customer1@example.com', first_name: 'John', last_name: 'Doe', role: 'customer', created_at: '2024-01-03' },
-      { user_id: 4, email: 'customer2@example.com', first_name: 'Jane', last_name: 'Smith', role: 'customer', created_at: '2024-01-04' }
-    ];
+    const response = await fetch(`${API_URL}/admin/users`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error('Failed to fetch users');
+    const users = await response.json();
+    // Map last_login_at to last_login to match the interface
+    return users.map((user: any) => ({
+      ...user,
+      last_login: user.last_login_at
+    }));
   },
 
-  // Update user role - Mock since no API
+  // Update user role
   updateUserRole: async (token: string, userId: string, role: string) => {
-    console.log(`Mock: Updating user ${userId} to role ${role}`);
-    return { message: 'User role updated successfully (mock)' };
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const response = await fetch(`${apiUrl}/api/admin/users/${userId}/role`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ role })
+    });
+
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type');
+      let errorData;
+      
+      if (contentType && contentType.includes('application/json')) {
+        errorData = await response.json();
+      } else {
+        const text = await response.text();
+        errorData = { message: text || `HTTP ${response.status}: ${response.statusText}` };
+      }
+      
+      throw new Error(errorData.message || 'Failed to update user role');
+    }
+
+    return response.json();
   },
 
   // Generate report - Using available data
@@ -285,7 +311,7 @@ const topProducts = products.slice(0, 5).map((product: any, index: number) => ({
       });
       
       // Calculate report data
-      const totalRevenue = filteredOrders.reduce((sum: number, order: any) => sum + (order.total_amount || 0), 0);
+      const totalRevenue = filteredOrders.reduce((sum: number, order: any) => sum + Number(order.total_amount || 0), 0);
       const totalOrders = filteredOrders.length;
       const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
       
@@ -403,5 +429,148 @@ const topProducts = products.slice(0, 5).map((product: any, index: number) => ({
   saveReportConfiguration: async (token: string, config: any) => {
     console.log('Mock: Saving report configuration', config);
     return { message: 'Report configuration saved successfully (mock)', config };
+  },
+
+  // Create user
+  createUser: async (token: string, userData: any) => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const response = await fetch(`${apiUrl}/api/auth/admin/register`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(userData)
+    });
+
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type');
+      let errorData;
+      
+      if (contentType && contentType.includes('application/json')) {
+        errorData = await response.json();
+      } else {
+        const text = await response.text();
+        errorData = { message: text || `HTTP ${response.status}: ${response.statusText}` };
+      }
+      
+      throw new Error(errorData.message || 'Failed to create user');
+    }
+
+    return response.json();
+  },
+
+  // Delete user
+  deleteUser: async (token: string, userId: string) => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const response = await fetch(`${apiUrl}/api/admin/users/${userId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type');
+      let errorData;
+      
+      if (contentType && contentType.includes('application/json')) {
+        errorData = await response.json();
+      } else {
+        const text = await response.text();
+        errorData = { message: text || `HTTP ${response.status}: ${response.statusText}` };
+      }
+      
+      throw new Error(errorData.message || 'Failed to delete user');
+    }
+
+    return response.json();
+  },
+
+  // Reset user password
+  resetUserPassword: async (token: string, userId: string, newPassword: string) => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const response = await fetch(`${apiUrl}/api/admin/users/${userId}/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ new_password: newPassword })
+    });
+
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type');
+      let errorData;
+      
+      if (contentType && contentType.includes('application/json')) {
+        errorData = await response.json();
+      } else {
+        const text = await response.text();
+        errorData = { message: text || `HTTP ${response.status}: ${response.statusText}` };
+      }
+      
+      throw new Error(errorData.message || 'Failed to reset password');
+    }
+
+    return response.json();
+  },
+
+  // Toggle user status
+  toggleUserStatus: async (token: string, userId: string, isActive: boolean) => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const response = await fetch(`${apiUrl}/api/admin/users/${userId}/status`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ is_active: isActive })
+    });
+
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type');
+      let errorData;
+      
+      if (contentType && contentType.includes('application/json')) {
+        errorData = await response.json();
+      } else {
+        const text = await response.text();
+        errorData = { message: text || `HTTP ${response.status}: ${response.statusText}` };
+      }
+      
+      throw new Error(errorData.message || 'Failed to update user status');
+    }
+
+    return response.json();
+  },
+
+  // Send promotions to users
+  sendPromotions: async (token: string, userIds: string[]) => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const response = await fetch(`${apiUrl}/api/admin/users/send-promotions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ user_ids: userIds })
+    });
+
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type');
+      let errorData;
+      
+      if (contentType && contentType.includes('application/json')) {
+        errorData = await response.json();
+      } else {
+        const text = await response.text();
+        errorData = { message: text || `HTTP ${response.status}: ${response.statusText}` };
+      }
+      
+      throw new Error(errorData.message || 'Failed to send promotions');
+    }
+
+    return response.json();
   }
 };

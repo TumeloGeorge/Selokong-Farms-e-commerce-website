@@ -11,10 +11,20 @@ const Pool = db.pool;
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config({path: '.env'});
 
 const app = express();
 const port = process.env.PORT || 4000;
+
+// Rate limiting
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // limit each IP to 5 requests per windowMs
+    message: 'Too many authentication attempts, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+});
 
 // Middleware
 app.use(bodyParser.json());
@@ -67,6 +77,18 @@ app.post('/api/auth/register', async (req, res) => {
     const { email, password, first_name, last_name, phone } = req.body;
 
     try {
+        // Validate email format
+        const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({ error: 'Invalid email format' });
+        }
+
+        // Validate phone format (flexible for international formats)
+        const phoneRegex = /^\+?[0-9\s\-\(\)]{7,20}$/;
+        if (!phoneRegex.test(phone)) {
+            return res.status(400).json({ error: 'Phone must be 7-20 characters, can include +, spaces, dashes, parentheses' });
+        }
+
         // Check if user exists
         const userExists = await Pool.query(
             'SELECT * FROM users WHERE email = $1',
@@ -180,6 +202,318 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
+// ADMIN USER MANAGEMENT ENDPOINTS
+// =====================================================
+
+// POST admin register - Create user as admin
+app.post('/api/auth/admin/register', authenticateToken, /*requireAdmin,*/ async (req, res) => {
+    const { email, password, first_name, last_name, phone, role } = req.body;
+
+    try {
+        // Validate email format
+        const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({ message: 'Invalid email format' });
+        }
+
+        // Validate phone format (flexible for international formats)
+        const phoneRegex = /^\+?[0-9\s\-\(\)]{7,20}$/;
+        if (!phoneRegex.test(phone)) {
+            return res.status(400).json({ message: 'Phone must be 7-20 characters, can include +, spaces, dashes, parentheses' });
+        }
+
+        // Check if user exists
+        const userExists = await Pool.query(
+            'SELECT * FROM users WHERE email = $1',
+            [email]
+        );
+
+        if (userExists.rows.length > 0) {
+            return res.status(400).json({ message: 'User already exists' });
+        }
+
+        // Hash password
+        const password_hash = await bcrypt.hash(password, 10);
+
+        // Create user with specified role
+        const result = await Pool.query(
+            `INSERT INTO users (email, password_hash, first_name, last_name, phone, role, is_active) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7) 
+             RETURNING user_id, email, first_name, last_name, phone, role, is_active, created_at`,
+            [email, password_hash, first_name, last_name, phone, role || 'customer', true]
+        );
+
+        const user = result.rows[0];
+
+        res.status(201).json({
+            message: 'User created successfully',
+            user
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error during user creation' });
+    }
+});
+
+// GET all users (Admin only)
+app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const result = await Pool.query(
+            `SELECT user_id, email, first_name, last_name, phone, role, is_active, created_at, last_login_at
+             FROM users
+             ORDER BY created_at DESC`
+        );
+
+        res.json(result.rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Failed to fetch users' });
+    }
+});
+
+// GET single user (Admin only)
+app.get('/api/admin/users/:userId', authenticateToken, requireAdmin, async (req, res) => {
+    const { userId } = req.params;
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+        return res.status(400).json({ message: 'Invalid user ID format' });
+    }
+
+    try {
+        const result = await Pool.query(
+            `SELECT user_id, email, first_name, last_name, phone, role, is_active, created_at, last_login_at
+             FROM users
+             WHERE user_id = $1`,
+            [userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Failed to fetch user' });
+    }
+});
+
+// PUT update user role (Admin only)
+app.put('/api/admin/users/:userId/role', authenticateToken, requireAdmin, async (req, res) => {
+    const { userId } = req.params;
+    const { role } = req.body;
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+        return res.status(400).json({ message: 'Invalid user ID format' });
+    }
+
+    const validRoles = ['customer', 'moderator', 'admin', 'staff'];
+    
+    if (!validRoles.includes(role)) {
+        return res.status(400).json({ message: 'Invalid role' });
+    }
+
+    try {
+        const result = await Pool.query(
+            `UPDATE users
+             SET role = $1
+             WHERE user_id = $2
+             RETURNING user_id, email, first_name, last_name, phone, role, is_active, created_at`,
+            [role, userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        res.json({
+            message: 'User role updated successfully',
+            user: result.rows[0]
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Failed to update user role' });
+    }
+});
+
+// PUT update user status (Admin only)
+app.put('/api/admin/users/:userId/status', authenticateToken, requireAdmin, async (req, res) => {
+    const { userId } = req.params;
+    const { is_active } = req.body;
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+        return res.status(400).json({ message: 'Invalid user ID format' });
+    }
+
+    try {
+        const result = await Pool.query(
+            `UPDATE users
+             SET is_active = $1
+             WHERE user_id = $2
+             RETURNING user_id, email, first_name, last_name, phone, role, is_active, created_at`,
+            [is_active, userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        res.json({
+            message: `User ${is_active ? 'activated' : 'deactivated'} successfully`,
+            user: result.rows[0]
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Failed to update user status' });
+    }
+});
+
+// POST reset user password (Admin only)
+app.post('/api/admin/users/:userId/reset-password', authenticateToken, requireAdmin, async (req, res) => {
+    const { userId } = req.params;
+    const { new_password } = req.body;
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+        return res.status(400).json({ message: 'Invalid user ID format' });
+    }
+
+    if (!new_password || new_password.length < 6) {
+        return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+
+    try {
+        // Hash new password
+        const password_hash = await bcrypt.hash(new_password, 10);
+
+        const result = await Pool.query(
+            `UPDATE users
+             SET password_hash = $1
+             WHERE user_id = $2
+             RETURNING user_id, email, first_name, last_name, phone, role, is_active, created_at`,
+            [password_hash, userId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        res.json({
+            message: 'Password reset successfully',
+            user: result.rows[0]
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Failed to reset password' });
+    }
+});
+
+// DELETE user (Admin only)
+app.delete('/api/admin/users/:userId', authenticateToken, requireAdmin, async (req, res) => {
+    const { userId } = req.params;
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+        return res.status(400).json({ message: 'Invalid user ID format' });
+    }
+
+    const client = await Pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        // Check if user exists
+        const userResult = await client.query(
+            'SELECT * FROM users WHERE user_id = $1',
+            [userId]
+        );
+
+        if (userResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Delete user's cart items
+        await client.query(
+            'DELETE FROM cart_items WHERE user_id = $1',
+            [userId]
+        );
+
+        // Delete user's addresses
+        await client.query(
+            'DELETE FROM addresses WHERE user_id = $1',
+            [userId]
+        );
+
+        // Delete user's orders (cascade will handle order_items)
+        await client.query(
+            'DELETE FROM orders WHERE user_id = $1',
+            [userId]
+        );
+
+        // Delete user
+        await client.query(
+            'DELETE FROM users WHERE user_id = $1',
+            [userId]
+        );
+
+        await client.query('COMMIT');
+
+        res.json({ message: 'User deleted successfully' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error(err);
+        res.status(500).json({ message: 'Failed to delete user' });
+    } finally {
+        client.release();
+    }
+});
+
+// POST send promotions to users (Admin only)
+app.post('/api/admin/users/send-promotions', authenticateToken, requireAdmin, async (req, res) => {
+    const { user_ids } = req.body;
+
+    if (!Array.isArray(user_ids) || user_ids.length === 0) {
+        return res.status(400).json({ message: 'user_ids must be a non-empty array' });
+    }
+
+    try {
+        // Fetch users
+        const placeholders = user_ids.map((_, i) => `$${i + 1}`).join(',');
+        const result = await Pool.query(
+            `SELECT user_id, email, first_name
+             FROM users
+             WHERE user_id = ANY($1::text[])`,
+            [user_ids]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'No users found' });
+        }
+
+        // In a real application, you would send emails here
+        // For now, just log the action
+        console.log(`Promotions sent to ${result.rows.length} users:`, result.rows.map(u => u.email));
+
+        res.json({
+            message: `Promotions sent to ${result.rows.length} users`,
+            users_count: result.rows.length
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Failed to send promotions' });
     }
 });
 
@@ -362,6 +696,12 @@ app.put('/api/products/:id', authenticateToken, requireAdmin, async (req, res) =
         compare_at_price, unit, stock_quantity, is_active, is_featured
     } = req.body;
 
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+        return res.status(400).json({ error: 'Invalid product ID format' });
+    }
+
     try {
         const result = await Pool.query(
             `UPDATE products 
@@ -397,6 +737,12 @@ app.put('/api/products/:id', authenticateToken, requireAdmin, async (req, res) =
 // DELETE product (Admin only)
 app.delete('/api/products/:id', authenticateToken, requireAdmin, async (req, res) => {
     const { id } = req.params;
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+        return res.status(400).json({ error: 'Invalid product ID format' });
+    }
 
     try {
         // Soft delete by setting is_active to false

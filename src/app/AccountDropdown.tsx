@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { ChevronDown, User } from "lucide-react";
+import { ChevronDown, User, Settings, ShoppingBag, Heart, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "../context/authContext";
 
 export default function AccountDropdown() {
   const [open, setOpen] = useState(false);

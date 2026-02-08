@@ -1,6 +1,6 @@
 "use client";
 import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, Eye, EyeOff, Loader } from "lucide-react";
 import { useAuth } from "../../context/authContext";
 
@@ -11,6 +11,7 @@ interface AuthFormProps {
 
 export default function AuthForm({ type, isAdmin = false }: AuthFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login, register, isLoading } = useAuth();
   const [form, setForm] = useState({
     first_name: "",
@@ -36,7 +37,11 @@ export default function AuthForm({ type, isAdmin = false }: AuthFormProps) {
         await login(form.email, form.password);
         // Check if user is admin and redirect accordingly
         const user = JSON.parse(localStorage.getItem('user') || '{}');
-        if (user.role === 'admin' || user.role === 'staff') {
+        // If a return path was provided, go there. Otherwise go to admin or home.
+        const next = searchParams?.get('next');
+        if (next) {
+          router.push(next);
+        } else if (user.role === 'admin' || user.role === 'staff') {
           router.push("/admin");
         } else {
           router.push("/");
